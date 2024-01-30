@@ -1,7 +1,4 @@
-// Copyright (c) Microsoft Corporation.
-// SPDX-License-Identifier: Apache-2.0
-
-// DeepSpeed Team
+//use this file to replace python*/dist-packages/deepspeed/inference/v2/kernels/ragged_ops/logits_gather/logits_gather.cu
 
 #include "ds_kernel_utils.h"
 #include "logits_gather.cuh"
@@ -20,23 +17,26 @@ __global__ void logits_gather_kernel(T* final_token_acts,
                                      const T* token_acts,
                                      const RaggedBatchDescriptor* ragged_batch,
                                      const InflightSeqDescriptor* inflight_batch,
-                                     const int32_t embed_dim)
+                                     const int32_t embed_dim,
+                                     const int32_t gather_num)
 {
     constexpr int T_vector = logits_gather::granularity / sizeof(T);
 
-    const int32_t seq_id = blockIdx.y;
+    const int32_t seq_id = blockIdx.y / gather_num;
+    const int32_t ahead_num = blockIdx.y % gather_num;
 
     // It's possible we've padded the output Tensor (under CG conditions)
     if (seq_id >= ragged_batch->n_sequences) return;
 
     const InflightSeqDescriptor seq = inflight_batch[seq_id];
-    const int final_token_idx = seq.start_idx + seq.n_tokens - 1;
+    if (ahead_num >= seq.n_tokens) return;
+    const int token_idx = seq.start_idx + ahead_num;
 
-    const int token_offset = final_token_idx * embed_dim;
+    const int token_offset = token_idx * embed_dim;
     const int thread_offset =
         threadIdx.x * T_vector + blockIdx.x * logits_gather::threads * T_vector;
 
-    const int final_token_offset = seq_id * embed_dim;
+    const int final_token_offset = (seq_id * gather_num + ahead_num) * embed_dim;
 
     T reg_buf[T_vector];
 
@@ -56,17 +56,18 @@ void launch_logits_gather(T* final_token_acts,
                           const InflightSeqDescriptor* inflight_batch,
                           const int32_t n_seqs,
                           const int32_t embed_dim,
+                          const int32_t gather_num,
                           cudaStream_t stream)
 {
     constexpr int T_vector = logits_gather::granularity / sizeof(T);
     constexpr int elems_per_block = logits_gather::threads * T_vector;
     const int parallel_blocks = (embed_dim + elems_per_block - 1) / elems_per_block;
 
-    const dim3 grid(parallel_blocks, n_seqs, 1);
+    const dim3 grid(parallel_blocks, n_seqs * gather_num, 1);
     const dim3 block(logits_gather::threads, 1, 1);
 
     logits_gather_kernel<T><<<grid, block, 0, stream>>>(
-        final_token_acts, all_acts, ragged_batch, inflight_batch, embed_dim);
+        final_token_acts, all_acts, ragged_batch, inflight_batch, embed_dim, gather_num);
 }
 
 #define INSTANTIATE_FOR_TYPE(T)                                                        \
@@ -76,6 +77,7 @@ void launch_logits_gather(T* final_token_acts,
                                           const InflightSeqDescriptor* inflight_batch, \
                                           const int32_t n_seqs,                        \
                                           const int32_t embed_dim,                     \
+                                          const int32_t gather_num,                     \
                                           cudaStream_t stream);
 
 INSTANTIATE_FOR_TYPE(float)

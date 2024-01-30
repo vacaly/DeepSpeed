@@ -19,7 +19,7 @@ class RaggedLogitsGather(DSKernelBase):
 
     supported_dtypes = [torch.float16, torch.bfloat16, torch.float32]
 
-    def __init__(self, model_dim: int, fp_dtype: torch.dtype):
+    def __init__(self, model_dim: int, fp_dtype: torch.dtype, gather_num : int = 1):
         """
         Parameters:
             fp_dtype (torch.dtype): Data type for the input/output. Supported values
@@ -34,6 +34,7 @@ class RaggedLogitsGather(DSKernelBase):
 
         inf_module = RaggedOpsBuilder().load()
         self.kernel = inf_module.gather_for_logits
+        self.gather_num = gather_num
 
     def __call__(self, final_token_activations: torch.Tensor, all_activations: torch.Tensor,
                  ragged_wrapper: RaggedBatchWrapper) -> torch.Tensor:
@@ -48,5 +49,5 @@ class RaggedLogitsGather(DSKernelBase):
         """
 
         self.kernel(final_token_activations, all_activations, ragged_wrapper.batch_metadata_buffer(),
-                    ragged_wrapper.inflight_seq_descriptors())
+                    ragged_wrapper.inflight_seq_descriptors(), self.gather_num)
         return final_token_activations

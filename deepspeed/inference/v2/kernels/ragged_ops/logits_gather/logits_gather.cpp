@@ -13,6 +13,7 @@
                              seq_metadata_raw,                     \
                              n_seqs,                               \
                              embed_dim,                            \
+                             gather_num,                            \
                              at::cuda::getCurrentCUDAStream());    \
     }
 
@@ -23,7 +24,8 @@ will be used for token sampling.
 void gather_for_logits(torch::Tensor& final_token_acts,
                        torch::Tensor& all_acts,
                        torch::Tensor& batch_metadata,
-                       torch::Tensor& seq_metadata)
+                       torch::Tensor& seq_metadata,
+                       int32_t gather_num)
 {
     const RaggedBatchDescriptor* batch_metadata_raw =
         reinterpret_cast<const RaggedBatchDescriptor*>(batch_metadata.data_ptr());

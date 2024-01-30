@@ -19,4 +19,5 @@ void launch_logits_gather(T* final_token_acts,
                           const InflightSeqDescriptor* seq_metadata,
                           const int32_t n_seqs,
                           const int32_t embed_dim,
+                          const int32_t gather_num,
                           cudaStream_t stream);
